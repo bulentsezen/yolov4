@@ -1,50 +1,45 @@
+#-*- coding: utf-8 -*-  #chars
+
 import cv2
-import os
-from pygame import mixer  # Load the pygame library
+from pygame import mixer
 import time
 from gtts import gTTS
+import threading
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
-def seslendir(class_name):
+def seslendir_thread(class_name):
     metin = "Bir " + class_name + " algılandı."
     tts = gTTS(metin, lang="tr")
     dosya_adi = str(class_name)+'.mp3'
     tts.save(dosya_adi)
-
     mixer.init()
     mixer.music.load(dosya_adi)
     mixer.music.play()
-    while mixer.music.get_busy():  # wait for music to finish playing
+    while mixer.music.get_busy():
         time.sleep(0.1)
 
-
-# Opencv DNN
 net = cv2.dnn.readNet("dnn_model/yolov4-tiny.weights", "dnn_model/yolov4-tiny.cfg")
 model = cv2.dnn_DetectionModel(net)
 model.setInputParams(size=(320, 320), scale=1/255)
 
-
 # Load class lists
 classes = []
-with open("dnn_model/classes.txt", "r") as file_object:
+with open("dnn_model/classes.txt", "r", encoding="utf-8") as file_object: 
     for class_name in file_object.readlines():
 
-        class_name = class_name.strip()  # satır arası boşluklar için
-        print(class_name)
+        class_name = class_name.strip()
         classes.append(class_name)
 
-
-
-# Initialize camera
 cap = cv2.VideoCapture(0)
 
-insan_algilandi = False
-cep_telefonu_algilandi = False
+# Create a set to keep track of already detected objects
+detected_objects = set()
 
 while True:
-    # Get frames
+
     ret, frame = cap.read()
 
-    # Object Detection
     (class_ids, scores, bboxes) = model.detect(frame, confThreshold=0.3, nmsThreshold=.4)
     for class_id, score, bbox in zip(class_ids, scores, bboxes):
         (x, y, w, h) = bbox
@@ -52,17 +47,17 @@ while True:
 
         class_name = classes[class_id]
 
-        cv2.putText(frame, class_name, (x, y - 10), cv2.FONT_HERSHEY_PLAIN, 3, (200,0,50), 2)
+        font = ImageFont.truetype("arial.ttf", size=40) 
+        img = Image.fromarray(frame)
+        draw = ImageDraw.Draw(img)
+        draw.text((x, y), class_name, font=font, fill=(25, 20, 250, 0))
+        frame = np.array(img)
 
-        if not insan_algilandi and class_name == "insan":
-            seslendir(class_name)
-            insan_algilandi = True
-
-
-        if not cep_telefonu_algilandi and class_name == "cep telefonu":
-            seslendir(class_name)
-            cep_telefonu_algilandi = True
-
+        # Check if the object is already detected
+        if class_name not in detected_objects:
+            detected_objects.add(class_name)
+            seslendir_thread_ = threading.Thread(target=seslendir_thread, args=(class_name,))
+            seslendir_thread_.start()
 
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1)
@@ -71,4 +66,3 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
-
